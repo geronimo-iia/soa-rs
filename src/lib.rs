@@ -316,8 +316,14 @@ pub use soa_rs_derive::SoaClone;
 /// # #[derive(Soars, Debug, PartialEq, Copy, Clone)]
 /// # #[soa_derive(Debug, PartialEq)]
 /// # struct Foo(u8, u16);
-/// let soa = soa![Foo(1, 2); 2];
-/// assert_eq!(soa, soa![Foo(1, 2), Foo(1, 2)]);
+/// let soa = soa![Foo(1, 2); 5];
+/// assert_eq!(soa, soa![
+///     Foo(1, 2),
+///     Foo(1, 2),
+///     Foo(1, 2),
+///     Foo(1, 2),
+///     Foo(1, 2),
+/// ]);
 /// ```
 #[macro_export]
 macro_rules! soa {
@@ -347,10 +353,12 @@ macro_rules! soa {
         {
             let elem = $elem;
             let mut out = $crate::Soa::with(elem.clone());
+            out.reserve($n);
 
             let mut i = 2;
             while i < $n {
                 out.push(elem.clone());
+                i += 1;
             }
 
             out.push(elem);
