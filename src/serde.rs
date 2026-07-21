@@ -1,11 +1,11 @@
 use crate::{Soa, Soars};
-use serde::{
-    de::{Deserialize, Deserializer, SeqAccess, Visitor},
-    ser::{Serialize, SerializeSeq, Serializer},
-};
 use core::{
     fmt::{self, Formatter},
     marker::PhantomData,
+};
+use serde::{
+    de::{Deserialize, Deserializer, SeqAccess, Visitor},
+    ser::{Serialize, SerializeSeq, Serializer},
 };
 
 impl<T> Serialize for Soa<T>
@@ -53,7 +53,7 @@ where
     where
         A: SeqAccess<'de>,
     {
-        let mut out = Soa::<T>::new();
+        let mut out = Soa::<T>::with_capacity(seq.size_hint().unwrap_or(0));
         while let Some(next) = seq.next_element()? {
             out.push(next);
         }

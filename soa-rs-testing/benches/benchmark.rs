@@ -105,5 +105,32 @@ fn criterion_benchmark(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, criterion_benchmark);
+fn bench_serde_deserialize(c: &mut Criterion) {
+    #[derive(Soars, serde::Deserialize, Clone, Copy)]
+    #[soa_derive(include(Ref), serde::Serialize)]
+    struct Point {
+        x: f32,
+        y: f32,
+        z: f32,
+    }
+
+    let soa: Soa<Point> = (0..4096)
+        .map(|i| Point {
+            x: i as f32,
+            y: i as f32 * 2.,
+            z: i as f32 * 3.,
+        })
+        .collect();
+    let json = serde_json::to_string(&soa).unwrap();
+
+    let mut group = c.benchmark_group("serde_deserialize");
+    group.bench_function("json_4096", |b| {
+        b.iter(|| {
+            let _: Soa<Point> = serde_json::from_str(&json).unwrap();
+        })
+    });
+    group.finish();
+}
+
+criterion_group!(benches, criterion_benchmark, bench_serde_deserialize);
 criterion_main!(benches);

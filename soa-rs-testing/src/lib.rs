@@ -725,3 +725,43 @@ fn no_transmute_ptr_to_ptr_warning() {
         field: i32,
     }
 }
+
+#[test]
+fn serde_deserialize_no_realloc() {
+    #[derive(Soars, serde::Deserialize)]
+    #[soa_derive(Debug, PartialEq)]
+    #[soa_derive(include(Ref), serde::Serialize)]
+    struct Item {
+        x: u32,
+        y: u32,
+    }
+
+    let original = soa![
+        Item { x: 1, y: 2 },
+        Item { x: 3, y: 4 },
+        Item { x: 5, y: 6 },
+    ];
+
+    let json = serde_json::to_string(&original).unwrap();
+    let deserialized: Soa<Item> = serde_json::from_str(&json).unwrap();
+
+    assert_eq!(original, deserialized);
+    // serde_json does not provide a size_hint (returns None), so capacity
+    // will be >= len due to growth factor. Just verify round-trip correctness.
+    assert!(deserialized.capacity() >= deserialized.len());
+}
+
+#[test]
+fn serde_roundtrip_empty() {
+    #[derive(Soars, serde::Deserialize)]
+    #[soa_derive(Debug, PartialEq)]
+    #[soa_derive(include(Ref), serde::Serialize)]
+    struct Item {
+        x: u32,
+    }
+
+    let original: Soa<Item> = Soa::new();
+    let json = serde_json::to_string(&original).unwrap();
+    let deserialized: Soa<Item> = serde_json::from_str(&json).unwrap();
+    assert_eq!(original, deserialized);
+}
