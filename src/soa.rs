@@ -1,6 +1,6 @@
 use crate::{
     AsMutSlice, AsSlice, IntoIter, Iter, IterMut, Slice, SliceMut, SliceRef, SoaClone, SoaRaw,
-    Soars, Vec, iter_raw::IterRaw,
+    Soars, Vec, drain::Drain, iter_raw::IterRaw,
 };
 use core::{
     borrow::{Borrow, BorrowMut},
@@ -568,6 +568,350 @@ where
     /// ```
     pub fn clear(&mut self) {
         while self.pop().is_some() {}
+    }
+
+    /// Retains only the elements specified by the predicate.
+    ///
+    /// Removes all elements `e` for which `f(e)` returns `false`. This method
+    /// operates in place, visiting each element exactly once in the original
+    /// order, and preserves the order of the retained elements.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use soa_rs::{Soa, Soars, soa};
+    /// # #[derive(Soars, Debug, PartialEq)]
+    /// # #[soa_derive(Debug, PartialEq)]
+    /// # struct Foo(u8);
+    /// let mut soa: Soa<_> = [Foo(0), Foo(1), Foo(2), Foo(3)].into();
+    /// soa.retain(|r| r.0 % 2 == 0);
+    /// assert_eq!(soa, soa![Foo(0), Foo(2)]);
+    /// ```
+    pub fn retain<F>(&mut self, mut f: F)
+    where
+        F: FnMut(T::Ref<'_>) -> bool,
+    {
+        let mut write = 0usize;
+        let mut read = 0usize;
+        while read < self.len {
+            // SAFETY: read < self.len, element is initialized.
+            let keep = unsafe { f(self.raw().offset(read).get_ref()) };
+            if keep {
+                if write != read {
+                    // SAFETY: write < read, both < self.len; ranges non-overlapping.
+                    unsafe {
+                        self.raw().offset(read).copy_to(self.raw().offset(write), 1);
+                    }
+                }
+                write += 1;
+            } else {
+                // SAFETY: read < self.len, element is initialized; move out and drop.
+                drop(unsafe { self.raw().offset(read).get() });
+            }
+            read += 1;
+        }
+        self.len = write;
+    }
+
+    /// Retains only the elements specified by the predicate, passing mutable
+    /// references to it.
+    ///
+    /// Like [`retain`], but allows the predicate to also mutate kept elements.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use soa_rs::{Soa, Soars, soa};
+    /// # #[derive(Soars, Debug, PartialEq)]
+    /// # #[soa_derive(Debug, PartialEq)]
+    /// # struct Foo(u8);
+    /// let mut soa: Soa<_> = [Foo(1), Foo(2), Foo(3), Foo(4)].into();
+    /// soa.retain_mut(|mut r| { *r.0 *= 10; *r.0 < 30 });
+    /// assert_eq!(soa, soa![Foo(10), Foo(20)]);
+    /// ```
+    ///
+    /// [`retain`]: Soa::retain
+    pub fn retain_mut<F>(&mut self, mut f: F)
+    where
+        F: FnMut(T::RefMut<'_>) -> bool,
+    {
+        let mut write = 0usize;
+        let mut read = 0usize;
+        while read < self.len {
+            // SAFETY: read < self.len, element is initialized.
+            let keep = unsafe { f(self.raw().offset(read).get_mut()) };
+            if keep {
+                if write != read {
+                    // SAFETY: write < read, both < self.len; ranges non-overlapping.
+                    unsafe {
+                        self.raw().offset(read).copy_to(self.raw().offset(write), 1);
+                    }
+                }
+                write += 1;
+            } else {
+                drop(unsafe { self.raw().offset(read).get() });
+            }
+            read += 1;
+        }
+        self.len = write;
+    }
+
+    /// Removes all but the first of consecutive elements for which
+    /// `same_bucket` returns `true`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use soa_rs::{Soa, Soars, soa};
+    /// # #[derive(Soars, Debug, PartialEq)]
+    /// # #[soa_derive(Debug, PartialEq)]
+    /// # struct Foo(u8);
+    /// let mut soa: Soa<_> = [Foo(1), Foo(2), Foo(2), Foo(3)].into();
+    /// soa.dedup_by(|a, b| a == b);
+    /// assert_eq!(soa, soa![Foo(1), Foo(2), Foo(3)]);
+    /// ```
+    pub fn dedup_by<F>(&mut self, mut same_bucket: F)
+    where
+        F: FnMut(T::Ref<'_>, T::Ref<'_>) -> bool,
+    {
+        if self.len <= 1 {
+            return;
+        }
+        let mut write = 1usize;
+        for read in 1..self.len {
+            // SAFETY: read < self.len; write - 1 < write <= read < self.len.
+            let is_dup = unsafe {
+                same_bucket(
+                    self.raw().offset(read).get_ref(),
+                    self.raw().offset(write - 1).get_ref(),
+                )
+            };
+            if is_dup {
+                // SAFETY: read < self.len, element is initialized.
+                drop(unsafe { self.raw().offset(read).get() });
+            } else {
+                if write != read {
+                    // SAFETY: write < read < self.len; non-overlapping.
+                    unsafe {
+                        self.raw().offset(read).copy_to(self.raw().offset(write), 1);
+                    }
+                }
+                write += 1;
+            }
+        }
+        self.len = write;
+    }
+
+    /// Removes consecutive repeated elements.
+    ///
+    /// If the vector is not sorted, this removes only consecutive duplicates.
+    /// Use [`sort`] first if you want to deduplicate globally.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use soa_rs::{Soa, Soars, soa};
+    /// # #[derive(Soars, Debug, PartialEq)]
+    /// # #[soa_derive(Debug, PartialEq)]
+    /// # struct Foo(u8);
+    /// let mut soa: Soa<_> = [Foo(1), Foo(1), Foo(2), Foo(3), Foo(3)].into();
+    /// soa.dedup();
+    /// assert_eq!(soa, soa![Foo(1), Foo(2), Foo(3)]);
+    /// ```
+    ///
+    /// [`sort`]: Slice::sort
+    pub fn dedup(&mut self)
+    where
+        for<'a> T::Ref<'a>: PartialEq,
+    {
+        self.dedup_by(|a, b| {
+            // SAFETY: Both `a` and `b` reference live, initialized data that
+            // remains valid for the duration of this comparison. Extending one
+            // ref to match the other's lifetime is sound here.
+            let b: T::Ref<'_> = unsafe { core::mem::transmute(b) };
+            a == b
+        });
+    }
+
+    /// Removes consecutive elements that map to the same key.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use soa_rs::{Soa, Soars, soa};
+    /// # #[derive(Soars, Debug, PartialEq)]
+    /// # #[soa_derive(Debug, PartialEq)]
+    /// # struct Foo(u8);
+    /// let mut soa: Soa<_> = [Foo(10), Foo(11), Foo(20), Foo(30), Foo(31)].into();
+    /// soa.dedup_by_key(|r| *r.0 / 10);
+    /// assert_eq!(soa, soa![Foo(10), Foo(20), Foo(30)]);
+    /// ```
+    pub fn dedup_by_key<K, F>(&mut self, mut key: F)
+    where
+        K: PartialEq,
+        F: FnMut(T::Ref<'_>) -> K,
+    {
+        self.dedup_by(|a, b| {
+            // SAFETY: `a` and `b` are both live for the call; transmuting to a
+            // single lifetime is sound since we only read through them here.
+            let b: T::Ref<'_> = unsafe { core::mem::transmute(b) };
+            key(a) == key(b)
+        });
+    }
+
+    /// Removes and yields elements from the given range, shifting the tail left.
+    ///
+    /// The returned iterator yields the removed elements in order. If the
+    /// iterator is dropped before being fully consumed, the remaining elements
+    /// of the range are dropped and the tail is shifted.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the range start is greater than the end, or if the range end
+    /// is greater than the length.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use soa_rs::{Soa, Soars, soa};
+    /// # #[derive(Soars, Debug, PartialEq)]
+    /// # #[soa_derive(Debug, PartialEq)]
+    /// # struct Foo(usize);
+    /// let mut soa: Soa<_> = [Foo(1), Foo(2), Foo(3), Foo(4), Foo(5)].into();
+    /// let drained: Vec<_> = soa.drain(1..4).collect();
+    /// assert_eq!(drained, vec![Foo(2), Foo(3), Foo(4)]);
+    /// assert_eq!(soa, soa![Foo(1), Foo(5)]);
+    /// ```
+    pub fn drain<R>(&mut self, range: R) -> Drain<'_, T>
+    where
+        R: core::ops::RangeBounds<usize>,
+    {
+        use core::ops::Bound;
+        let start = match range.start_bound() {
+            Bound::Included(&s) => s,
+            Bound::Excluded(&s) => s + 1,
+            Bound::Unbounded => 0,
+        };
+        let end = match range.end_bound() {
+            Bound::Included(&e) => e + 1,
+            Bound::Excluded(&e) => e,
+            Bound::Unbounded => self.len,
+        };
+        assert!(start <= end, "drain range start > end");
+        assert!(end <= self.len, "drain range end out of bounds");
+
+        let old_len = self.len;
+        // Set len to `start` so that if Drain is leaked, the Soa exposes only
+        // the prefix [0..start] and the tail [end..old_len] is leaked too.
+        self.len = start;
+
+        Drain {
+            soa: core::ptr::NonNull::from(&mut *self),
+            range_start: start,
+            range_end: end,
+            tail_start: end,
+            tail_len: old_len - end,
+            read: start,
+            _marker: core::marker::PhantomData,
+        }
+    }
+
+    /// Splits the collection into two at the given index.
+    ///
+    /// Returns a newly allocated `Soa` containing the elements in the range
+    /// `[at, len)`. After the call, the original will contain elements `[0, at)`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `at > len`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use soa_rs::{Soa, Soars, soa};
+    /// # #[derive(Soars, Debug, PartialEq)]
+    /// # #[soa_derive(Debug, PartialEq)]
+    /// # struct Foo(usize);
+    /// let mut soa: Soa<_> = [Foo(1), Foo(2), Foo(3), Foo(4)].into();
+    /// let tail = soa.split_off(2);
+    /// assert_eq!(soa, soa![Foo(1), Foo(2)]);
+    /// assert_eq!(tail, soa![Foo(3), Foo(4)]);
+    /// ```
+    pub fn split_off(&mut self, at: usize) -> Self {
+        assert!(at <= self.len, "index out of bounds");
+        let tail_len = self.len - at;
+        let mut other = Self::with_capacity(tail_len);
+        if tail_len > 0 {
+            // SAFETY:
+            // - self.raw().offset(at) points to `tail_len` initialized elements.
+            // - other.raw() has capacity for `tail_len` elements.
+            // - The two allocations do not overlap.
+            unsafe {
+                self.raw()
+                    .offset(at)
+                    .copy_to(other.raw().offset(0), tail_len);
+            }
+            other.len = tail_len;
+        }
+        self.len = at;
+        other
+    }
+
+    /// Resizes the `Soa` in-place so that `len` equals `new_len`.
+    ///
+    /// If `new_len` is greater than `len`, the `Soa` is extended by calling
+    /// `f` for each new element. If `new_len` is less than `len`, the `Soa`
+    /// is truncated.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use soa_rs::{Soa, Soars, soa};
+    /// # #[derive(Soars, Debug, PartialEq)]
+    /// # #[soa_derive(Debug, PartialEq)]
+    /// # struct Foo(u8);
+    /// let mut soa: Soa<Foo> = Soa::new();
+    /// let mut n = 0u8;
+    /// soa.resize_with(4, || { let v = Foo(n); n += 1; v });
+    /// assert_eq!(soa, soa![Foo(0), Foo(1), Foo(2), Foo(3)]);
+    /// ```
+    pub fn resize_with<F>(&mut self, new_len: usize, mut f: F)
+    where
+        F: FnMut() -> T,
+    {
+        match new_len.cmp(&self.len) {
+            core::cmp::Ordering::Greater => {
+                self.reserve(new_len - self.len);
+                while self.len < new_len {
+                    self.push(f());
+                }
+            }
+            core::cmp::Ordering::Less => {
+                self.truncate(new_len);
+            }
+            core::cmp::Ordering::Equal => {}
+        }
+    }
+
+    /// Resizes the `Soa` in-place so that `len` equals `new_len`, using `value`
+    /// to fill new elements.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use soa_rs::{Soa, Soars, soa};
+    /// # #[derive(Soars, Debug, PartialEq, Clone)]
+    /// # #[soa_derive(Debug, PartialEq)]
+    /// # struct Foo(u8);
+    /// let mut soa: Soa<_> = [Foo(1), Foo(2)].into();
+    /// soa.resize(5, Foo(0));
+    /// assert_eq!(soa, soa![Foo(1), Foo(2), Foo(0), Foo(0), Foo(0)]);
+    /// ```
+    pub fn resize(&mut self, new_len: usize, value: T)
+    where
+        T: Clone,
+    {
+        self.resize_with(new_len, || value.clone());
     }
 
     /// Grows the allocated capacity if `len == cap`.

@@ -8,6 +8,10 @@
 struct AllowUnknownAttributes;
 
 use soa_rs::{AsMutSlice, AsSlice, AsSoaRef, Soa, SoaClone, Soars, soa};
+
+#[derive(Soars, Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[soa_derive(Debug, PartialEq, Eq)]
+struct Foo(u8);
 use std::sync::Mutex;
 
 #[derive(Soars, Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -908,4 +912,277 @@ fn soa_macro_repeat_zero_still_works() {
 fn soa_macro_repeat_one_still_works() {
     let soa: Soa<El> = soa![A; 1];
     assert_eq!(soa.len(), 1);
+}
+
+// ---- retain ----
+
+#[test]
+fn retain_keep_all() {
+    let mut soa: Soa<_> = [Foo(1), Foo(2), Foo(3)].into();
+    soa.retain(|_| true);
+    assert_eq!(soa, soa![Foo(1), Foo(2), Foo(3)]);
+}
+
+#[test]
+fn retain_drop_all() {
+    let mut soa: Soa<_> = [Foo(1), Foo(2), Foo(3)].into();
+    soa.retain(|_| false);
+    assert!(soa.is_empty());
+}
+
+#[test]
+fn retain_keep_even() {
+    let mut soa: Soa<_> = (0u8..8).map(Foo).collect::<Soa<_>>();
+    soa.retain(|r| r.0 % 2 == 0);
+    assert_eq!(soa, soa![Foo(0), Foo(2), Foo(4), Foo(6)]);
+}
+
+#[test]
+fn retain_drop_correctness() {
+    let mut soa: Soa<El> = [A, B, C, D, E].into();
+    soa.retain(|r| *r.foo % 8 == 0); // keeps A (foo=0), C (foo=8), E (foo=16)
+    assert_eq!(soa.len(), 3);
+}
+
+#[test]
+fn retain_mut_modifies_kept() {
+    let mut soa: Soa<_> = [Foo(1), Foo(2), Foo(3), Foo(4)].into();
+    soa.retain_mut(|r| {
+        *r.0 *= 10;
+        *r.0 < 30
+    });
+    assert_eq!(soa, soa![Foo(10), Foo(20)]);
+}
+
+// ---- dedup ----
+
+#[test]
+fn dedup_no_duplicates() {
+    let mut soa: Soa<_> = [Foo(1), Foo(2), Foo(3)].into();
+    soa.dedup();
+    assert_eq!(soa, soa![Foo(1), Foo(2), Foo(3)]);
+}
+
+#[test]
+fn dedup_all_same() {
+    let mut soa: Soa<_> = [Foo(5), Foo(5), Foo(5)].into();
+    soa.dedup();
+    assert_eq!(soa, soa![Foo(5)]);
+}
+
+#[test]
+fn dedup_runs() {
+    let mut soa: Soa<_> = [Foo(1), Foo(1), Foo(2), Foo(3), Foo(3), Foo(3), Foo(2)].into();
+    soa.dedup();
+    assert_eq!(soa, soa![Foo(1), Foo(2), Foo(3), Foo(2)]);
+}
+
+#[test]
+fn dedup_empty() {
+    let mut soa: Soa<Foo> = Soa::new();
+    soa.dedup();
+    assert!(soa.is_empty());
+}
+
+#[test]
+fn dedup_single() {
+    let mut soa = soa![Foo(42)];
+    soa.dedup();
+    assert_eq!(soa, soa![Foo(42)]);
+}
+
+#[test]
+fn dedup_by_custom() {
+    let mut soa: Soa<_> = [Foo(1), Foo(2), Foo(10), Foo(11), Foo(20)].into();
+    soa.dedup_by(|a, b| a.0 / 10 == b.0 / 10);
+    assert_eq!(soa, soa![Foo(1), Foo(10), Foo(20)]);
+}
+
+#[test]
+fn dedup_drop_correctness() {
+    let mut soa: Soa<El> = [A, A, B, B, C].into();
+    soa.dedup();
+    assert_eq!(soa.len(), 3);
+}
+
+// ---- dedup_by_key ----
+
+#[test]
+fn dedup_by_key_basic() {
+    let mut soa: Soa<_> = soa![
+        ExtraImplTester { things: 1, stuff: 10 },
+        ExtraImplTester { things: 1, stuff: 20 },
+        ExtraImplTester { things: 2, stuff: 30 },
+        ExtraImplTester { things: 2, stuff: 40 },
+        ExtraImplTester { things: 3, stuff: 50 },
+    ];
+    soa.dedup_by_key(|r| *r.things);
+    assert_eq!(soa.len(), 3);
+    assert_eq!(soa.things(), &[1, 2, 3]);
+}
+
+#[test]
+fn dedup_by_key_no_dups() {
+    let mut soa: Soa<_> = [Foo(1), Foo(2), Foo(3)].into();
+    soa.dedup_by_key(|r| *r.0);
+    assert_eq!(soa, soa![Foo(1), Foo(2), Foo(3)]);
+}
+
+// ---- drain ----
+
+#[test]
+fn drain_full_range() {
+    let mut soa: Soa<_> = [Foo(1), Foo(2), Foo(3)].into();
+    let drained: Vec<_> = soa.drain(..).collect();
+    assert_eq!(drained, vec![Foo(1), Foo(2), Foo(3)]);
+    assert!(soa.is_empty());
+}
+
+#[test]
+fn drain_middle() {
+    let mut soa: Soa<_> = [Foo(1), Foo(2), Foo(3), Foo(4), Foo(5)].into();
+    let drained: Vec<_> = soa.drain(1..4).collect();
+    assert_eq!(drained, vec![Foo(2), Foo(3), Foo(4)]);
+    assert_eq!(soa, soa![Foo(1), Foo(5)]);
+}
+
+#[test]
+fn drain_prefix() {
+    let mut soa: Soa<_> = [Foo(1), Foo(2), Foo(3)].into();
+    let drained: Vec<_> = soa.drain(..2).collect();
+    assert_eq!(drained, vec![Foo(1), Foo(2)]);
+    assert_eq!(soa, soa![Foo(3)]);
+}
+
+#[test]
+fn drain_suffix() {
+    let mut soa: Soa<_> = [Foo(1), Foo(2), Foo(3)].into();
+    let drained: Vec<_> = soa.drain(1..).collect();
+    assert_eq!(drained, vec![Foo(2), Foo(3)]);
+    assert_eq!(soa, soa![Foo(1)]);
+}
+
+#[test]
+fn drain_empty_range() {
+    let mut soa: Soa<_> = [Foo(1), Foo(2)].into();
+    let drained: Vec<_> = soa.drain(1..1).collect();
+    assert!(drained.is_empty());
+    assert_eq!(soa, soa![Foo(1), Foo(2)]);
+}
+
+#[test]
+fn drain_partial_consume_then_drop() {
+    let mut soa: Soa<_> = [Foo(1), Foo(2), Foo(3), Foo(4), Foo(5)].into();
+    {
+        let mut drain = soa.drain(1..4);
+        assert_eq!(drain.next(), Some(Foo(2)));
+        // Drop drain without consuming Foo(3) and Foo(4).
+    }
+    assert_eq!(soa, soa![Foo(1), Foo(5)]);
+}
+
+#[test]
+fn drain_drop_correctness() {
+    let mut soa: Soa<El> = [A, B, C, D, E].into();
+    let _drained: Vec<_> = soa.drain(1..3).collect();
+    assert_eq!(soa.len(), 3);
+}
+
+#[test]
+fn drain_size_hint() {
+    let mut soa: Soa<_> = [Foo(1), Foo(2), Foo(3), Foo(4)].into();
+    let mut drain = soa.drain(..);
+    assert_eq!(drain.size_hint(), (4, Some(4)));
+    drain.next();
+    assert_eq!(drain.size_hint(), (3, Some(3)));
+}
+
+// ---- split_off ----
+
+#[test]
+fn split_off_middle() {
+    let mut soa: Soa<_> = [Foo(1), Foo(2), Foo(3), Foo(4)].into();
+    let tail = soa.split_off(2);
+    assert_eq!(soa, soa![Foo(1), Foo(2)]);
+    assert_eq!(tail, soa![Foo(3), Foo(4)]);
+}
+
+#[test]
+fn split_off_at_zero() {
+    let mut soa: Soa<_> = [Foo(1), Foo(2)].into();
+    let tail = soa.split_off(0);
+    assert!(soa.is_empty());
+    assert_eq!(tail, soa![Foo(1), Foo(2)]);
+}
+
+#[test]
+fn split_off_at_len() {
+    let mut soa: Soa<_> = [Foo(1), Foo(2)].into();
+    let tail = soa.split_off(2);
+    assert_eq!(soa, soa![Foo(1), Foo(2)]);
+    assert!(tail.is_empty());
+}
+
+#[test]
+fn split_off_drop_correctness() {
+    let mut soa: Soa<El> = [A, B, C, D, E].into();
+    let tail = soa.split_off(2);
+    assert_eq!(soa.len(), 2);
+    assert_eq!(tail.len(), 3);
+}
+
+#[test]
+#[should_panic]
+fn split_off_out_of_bounds() {
+    let mut soa: Soa<_> = [Foo(1)].into();
+    soa.split_off(5);
+}
+
+// ---- resize ----
+
+#[test]
+fn resize_grow() {
+    let mut soa: Soa<_> = [Foo(1), Foo(2)].into();
+    soa.resize(5, Foo(0));
+    assert_eq!(soa, soa![Foo(1), Foo(2), Foo(0), Foo(0), Foo(0)]);
+}
+
+#[test]
+fn resize_shrink() {
+    let mut soa: Soa<_> = [Foo(1), Foo(2), Foo(3), Foo(4)].into();
+    soa.resize(2, Foo(0));
+    assert_eq!(soa, soa![Foo(1), Foo(2)]);
+}
+
+#[test]
+fn resize_noop() {
+    let mut soa: Soa<_> = [Foo(1), Foo(2)].into();
+    soa.resize(2, Foo(99));
+    assert_eq!(soa, soa![Foo(1), Foo(2)]);
+}
+
+#[test]
+fn resize_to_zero() {
+    let mut soa: Soa<_> = [Foo(1), Foo(2), Foo(3)].into();
+    soa.resize(0, Foo(0));
+    assert!(soa.is_empty());
+}
+
+#[test]
+fn resize_with_counter() {
+    let mut soa: Soa<Foo> = Soa::new();
+    let mut counter = 0u8;
+    soa.resize_with(4, || {
+        let v = Foo(counter);
+        counter += 1;
+        v
+    });
+    assert_eq!(soa, soa![Foo(0), Foo(1), Foo(2), Foo(3)]);
+}
+
+#[test]
+fn resize_drop_correctness() {
+    let mut soa: Soa<El> = [A, B, C, D, E].into();
+    soa.resize(2, A);
+    assert_eq!(soa.len(), 2);
 }

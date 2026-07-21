@@ -194,6 +194,9 @@ mod soa_raw;
 #[doc(hidden)]
 pub use soa_raw::SoaRaw;
 
+mod drain;
+pub use drain::Drain;
+
 mod chunks_exact;
 pub use chunks_exact::ChunksExact;
 
