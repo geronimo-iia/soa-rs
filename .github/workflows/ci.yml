@@ -47,8 +47,9 @@ jobs:
       - name: Test (serde feature)
         run: cargo test --workspace --features serde
 
-      - name: Install cargo-audit
-        run: cargo install cargo-audit --locked --quiet
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
 
       - name: Security audit
         run: cargo audit
