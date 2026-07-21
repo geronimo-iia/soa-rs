@@ -843,3 +843,44 @@ fn append_drop_correctness() {
     assert!(b.is_empty());
     // both a and b drop cleanly here
 }
+
+#[test]
+fn chunks_exact_double_ended() {
+    let soa: Soa<El> = [A, B, C, D, E, A].into(); // 6 elements
+    let mut iter = soa.chunks_exact(2);
+    assert_eq!(iter.next(),      Some(soa![A, B].as_slice()));
+    assert_eq!(iter.next_back(), Some(soa![E, A].as_slice()));
+    assert_eq!(iter.next(),      Some(soa![C, D].as_slice()));
+    assert_eq!(iter.next_back(), None);
+    assert_eq!(iter.next(),      None);
+}
+
+#[test]
+fn chunks_exact_exact_size() {
+    let soa: Soa<El> = [A, B, C, D].into();
+    let mut iter = soa.chunks_exact(2);
+    assert_eq!(iter.len(), 2);
+    iter.next();
+    assert_eq!(iter.len(), 1);
+    iter.next();
+    assert_eq!(iter.len(), 0);
+}
+
+#[test]
+fn chunks_exact_rev() {
+    let soa: Soa<El> = [A, B, C, D, E, A].into();
+    let chunks: Vec<_> = soa.chunks_exact(2).rev().collect();
+    assert_eq!(chunks.len(), 3);
+    assert_eq!(chunks[0], soa![E, A].as_slice());
+    assert_eq!(chunks[1], soa![C, D].as_slice());
+    assert_eq!(chunks[2], soa![A, B].as_slice());
+}
+
+#[test]
+fn chunks_exact_fused() {
+    let soa: Soa<El> = [A, B].into();
+    let mut iter = soa.chunks_exact(2);
+    assert!(iter.next().is_some());
+    assert!(iter.next().is_none());
+    assert!(iter.next().is_none()); // fused: stays None
+}

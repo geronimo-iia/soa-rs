@@ -184,5 +184,26 @@ fn bench_append(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, criterion_benchmark, bench_serde_deserialize, bench_truncate, bench_append);
+fn bench_chunks_exact_rev(c: &mut Criterion) {
+    let soa: Soa<Vec4> = (0..1u32 << 16)
+        .map(|i| Vec4(i as f32, 0., 0., 0.))
+        .collect();
+
+    c.bench_function("chunks_exact_rev_sum", |b| {
+        b.iter(|| {
+            soa.chunks_exact(8)
+                .rev()
+                .map(|chunk| {
+                    let mut s = 0f32;
+                    for i in 0..chunk.len() {
+                        s += chunk.idx(i).0;
+                    }
+                    s
+                })
+                .sum::<f32>()
+        })
+    });
+}
+
+criterion_group!(benches, criterion_benchmark, bench_serde_deserialize, bench_truncate, bench_append, bench_chunks_exact_rev);
 criterion_main!(benches);
