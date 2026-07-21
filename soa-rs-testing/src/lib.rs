@@ -1238,3 +1238,19 @@ fn sort_indices_single() {
     let order = soa.sort_indices_by_key(|r| *r.0);
     assert_eq!(order, [0]);
 }
+
+// Regression: upstream #43 — double-free in append() when T owns heap memory.
+// Our bulk copy_to + other.len=0 avoids drop of source elements; miri verifies.
+#[test]
+fn append_owned_no_double_free() {
+    #[derive(Soars)]
+    struct Owned {
+        value: Box<u8>,
+    }
+
+    let mut dst = Soa::<Owned>::new();
+    let mut src = soa![Owned { value: Box::new(1) }];
+    dst.append(&mut src);
+    assert_eq!(src.len(), 0);
+    assert_eq!(dst.len(), 1);
+}
