@@ -765,3 +765,81 @@ fn serde_roundtrip_empty() {
     let deserialized: Soa<Item> = serde_json::from_str(&json).unwrap();
     assert_eq!(original, deserialized);
 }
+
+// ---- truncate tests ----
+
+#[test]
+fn truncate_basic() {
+    let mut soa: Soa<El> = [A, B, C, D, E].into();
+    soa.truncate(3);
+    assert_eq!(soa.len(), 3);
+    assert!(soa.capacity() >= 5);
+    assert!(soa.into_iter().eq([A, B, C].into_iter()));
+}
+
+#[test]
+fn truncate_noop_when_len_ge_current() {
+    let mut soa: Soa<El> = [A, B].into();
+    soa.truncate(5);
+    assert_eq!(soa.len(), 2);
+    soa.truncate(2);
+    assert_eq!(soa.len(), 2);
+}
+
+#[test]
+fn truncate_to_zero() {
+    let mut soa: Soa<El> = [A, B, C].into();
+    soa.truncate(0);
+    assert!(soa.is_empty());
+}
+
+#[test]
+fn truncate_drop_count() {
+    // SingleDrop panics if dropped more than once — verifies no double-drop.
+    let mut soa: Soa<El> = [A, B, C, D, E].into();
+    soa.truncate(2);
+    assert_eq!(soa.len(), 2);
+    // drop of `soa` here drops A and B — passes if no panic
+}
+
+// ---- append tests ----
+
+#[test]
+fn append_basic() {
+    let mut a: Soa<El> = [A, B].into();
+    let mut b: Soa<El> = [C, D].into();
+    a.append(&mut b);
+    assert_eq!(a.len(), 4);
+    assert!(b.is_empty());
+    assert!(a.into_iter().eq([A, B, C, D].into_iter()));
+}
+
+#[test]
+fn append_into_empty() {
+    let mut a: Soa<El> = Soa::new();
+    let mut b: Soa<El> = [A, B].into();
+    a.append(&mut b);
+    assert_eq!(a.len(), 2);
+    assert!(b.is_empty());
+    assert!(a.into_iter().eq([A, B].into_iter()));
+}
+
+#[test]
+fn append_from_empty() {
+    let mut a: Soa<El> = [A].into();
+    let mut b: Soa<El> = Soa::new();
+    a.append(&mut b);
+    assert_eq!(a.len(), 1);
+    assert!(a.into_iter().eq([A].into_iter()));
+}
+
+#[test]
+fn append_drop_correctness() {
+    // SingleDrop panics on double-drop — verifies no double-free.
+    let mut a: Soa<El> = [A, B].into();
+    let mut b: Soa<El> = [C, D].into();
+    a.append(&mut b);
+    assert_eq!(a.len(), 4);
+    assert!(b.is_empty());
+    // both a and b drop cleanly here
+}

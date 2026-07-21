@@ -464,9 +464,16 @@ where
     /// assert_eq!(soa, soa![]);
     /// ```
     pub fn truncate(&mut self, len: usize) {
-        while len < self.len {
-            self.pop();
+        if len >= self.len {
+            return;
         }
+        if needs_drop::<T>() {
+            for i in len..self.len {
+                // SAFETY: i < self.len, element is initialized; moved out then dropped.
+                drop(unsafe { self.raw().offset(i).get() });
+            }
+        }
+        self.len = len;
     }
 
     /// Removes an element from the vector and returns it.
@@ -525,13 +532,22 @@ where
     /// assert_eq!(soa2, soa![]);
     /// ```
     pub fn append(&mut self, other: &mut Self) {
-        self.reserve(other.len);
-        for i in 0..other.len {
-            // SAFETY: i is in bounds
-            let element = unsafe { other.raw().offset(i).get() };
-            self.push(element);
+        if other.is_empty() {
+            return;
         }
-        other.clear();
+        self.reserve(other.len);
+        // SAFETY:
+        // - self has capacity for self.len + other.len elements after reserve.
+        // - other.raw() points to other.len initialized elements.
+        // - dst = self.raw().offset(self.len) is within the allocated region.
+        // - src and dst are separate allocations; no overlap.
+        unsafe {
+            other.raw().copy_to(self.raw().offset(self.len), other.len);
+        }
+        self.len += other.len;
+        // Elements moved to self; set other.len = 0 to prevent double-drop.
+        // other retains its allocation (mirrors Vec::append behaviour).
+        other.len = 0;
     }
 
     /// Clears the vector, removing all values.

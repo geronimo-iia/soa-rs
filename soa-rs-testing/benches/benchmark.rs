@@ -132,5 +132,57 @@ fn bench_serde_deserialize(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, criterion_benchmark, bench_serde_deserialize);
+fn bench_truncate(c: &mut Criterion) {
+    #[derive(Soars, Clone, Copy)]
+    struct Item {
+        x: f64,
+        y: f64,
+        z: f64,
+        w: f64,
+    }
+
+    let mut group = c.benchmark_group("truncate");
+    group.bench_function("1024_items", |b| {
+        b.iter_batched(
+            || {
+                (0u64..1024)
+                    .map(|i| Item {
+                        x: i as f64,
+                        y: i as f64,
+                        z: i as f64,
+                        w: i as f64,
+                    })
+                    .collect::<Soa<_>>()
+            },
+            |mut soa| {
+                soa.truncate(0);
+                soa
+            },
+            criterion::BatchSize::SmallInput,
+        )
+    });
+    group.finish();
+}
+
+fn bench_append(c: &mut Criterion) {
+    const N: usize = 1 << 14;
+    let mut group = c.benchmark_group("append");
+    group.bench_function("two_16k_vecs4", |b| {
+        b.iter_batched(
+            || {
+                let a: Soa<Vec4> = (0..N).map(|_| Vec4(1., 2., 3., 4.)).collect();
+                let b: Soa<Vec4> = (0..N).map(|_| Vec4(5., 6., 7., 8.)).collect();
+                (a, b)
+            },
+            |(mut a, mut b)| {
+                a.append(&mut b);
+                a
+            },
+            criterion::BatchSize::LargeInput,
+        )
+    });
+    group.finish();
+}
+
+criterion_group!(benches, criterion_benchmark, bench_serde_deserialize, bench_truncate, bench_append);
 criterion_main!(benches);
