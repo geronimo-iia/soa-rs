@@ -848,11 +848,11 @@ fn append_drop_correctness() {
 fn chunks_exact_double_ended() {
     let soa: Soa<El> = [A, B, C, D, E, A].into(); // 6 elements
     let mut iter = soa.chunks_exact(2);
-    assert_eq!(iter.next(),      Some(soa![A, B].as_slice()));
+    assert_eq!(iter.next(), Some(soa![A, B].as_slice()));
     assert_eq!(iter.next_back(), Some(soa![E, A].as_slice()));
-    assert_eq!(iter.next(),      Some(soa![C, D].as_slice()));
+    assert_eq!(iter.next(), Some(soa![C, D].as_slice()));
     assert_eq!(iter.next_back(), None);
-    assert_eq!(iter.next(),      None);
+    assert_eq!(iter.next(), None);
 }
 
 #[test]

@@ -1,0 +1,15 @@
+# Third-Party Notices
+
+This project is a fork of **soa-rs** by Timothy Harding.
+
+- Upstream repository: https://github.com/tim-harding/soa-rs
+- License: MIT
+
+The original MIT license and copyright notice are reproduced in full in the
+LICENSE file at the root of this repository, as required by the MIT license
+terms.
+
+## Changes from upstream
+
+This fork introduces additional features and improvements beyond the original.
+See CHANGELOG.md for a detailed list of changes made in this fork.

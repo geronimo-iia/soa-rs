@@ -211,5 +211,13 @@ fn bench_soa_macro_repeat(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, criterion_benchmark, bench_serde_deserialize, bench_truncate, bench_append, bench_chunks_exact_rev, bench_soa_macro_repeat);
+criterion_group!(
+    benches,
+    criterion_benchmark,
+    bench_serde_deserialize,
+    bench_truncate,
+    bench_append,
+    bench_chunks_exact_rev,
+    bench_soa_macro_repeat
+);
 criterion_main!(benches);

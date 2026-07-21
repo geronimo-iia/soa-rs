@@ -2,10 +2,11 @@
 name = "soa-rs"
 version = "1.0.0"
 edition = "2024"
+rust-version = "1.95"
 license = "MIT"
 description = "A Vec-like structure-of-arrays container"
-homepage = "https://github.com/tim-harding/soa-rs"
-repository = "https://github.com/tim-harding/soa-rs"
+homepage = "https://github.com/geronimo-iia/soa-rs"
+repository = "https://github.com/geronimo-iia/soa-rs"
 readme = "README.md"
 categories = ["data-structures", "no-std"]
 
