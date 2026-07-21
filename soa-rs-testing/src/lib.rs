@@ -884,3 +884,28 @@ fn chunks_exact_fused() {
     assert!(iter.next().is_none());
     assert!(iter.next().is_none()); // fused: stays None
 }
+
+#[test]
+fn soa_macro_repeat_single_alloc() {
+    // After the fix, capacity should equal N exactly (no over-allocation).
+    let soa: Soa<El> = soa![A; 10];
+    assert_eq!(soa.len(), 10);
+    assert_eq!(soa.capacity(), 10);
+    for i in 0..10 {
+        let el = soa.idx(i);
+        assert_eq!(el.foo, &A.foo);
+        assert_eq!(el.bar, &A.bar);
+    }
+}
+
+#[test]
+fn soa_macro_repeat_zero_still_works() {
+    let soa: Soa<El> = soa![A; 0];
+    assert!(soa.is_empty());
+}
+
+#[test]
+fn soa_macro_repeat_one_still_works() {
+    let soa: Soa<El> = soa![A; 1];
+    assert_eq!(soa.len(), 1);
+}

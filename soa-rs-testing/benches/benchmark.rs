@@ -1,6 +1,6 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use rand::{RngCore, SeedableRng, rngs::StdRng};
-use soa_rs::{Soa, Soars};
+use soa_rs::{Soa, Soars, soa};
 
 struct Rng(StdRng);
 
@@ -205,5 +205,11 @@ fn bench_chunks_exact_rev(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, criterion_benchmark, bench_serde_deserialize, bench_truncate, bench_append, bench_chunks_exact_rev);
+fn bench_soa_macro_repeat(c: &mut Criterion) {
+    c.bench_function("soa_macro_repeat_1024", |b| {
+        b.iter(|| soa![Vec4(1., 2., 3., 4.); 1024])
+    });
+}
+
+criterion_group!(benches, criterion_benchmark, bench_serde_deserialize, bench_truncate, bench_append, bench_chunks_exact_rev, bench_soa_macro_repeat);
 criterion_main!(benches);

@@ -352,16 +352,19 @@ macro_rules! soa {
     ($elem:expr; $n:expr) => {
         {
             let elem = $elem;
+            let n: usize = $n;
+            // Soa::with seeds type inference for T, then reserve_exact grows to
+            // exactly n capacity in one reallocation (total: at most 2 allocs).
             let mut out = $crate::Soa::with(elem.clone());
-            out.reserve($n);
-
-            let mut i = 2;
-            while i < $n {
+            out.reserve_exact(n.saturating_sub(1));
+            let mut i: usize = 1;
+            while i + 1 < n {
                 out.push(elem.clone());
                 i += 1;
             }
-
-            out.push(elem);
+            if n > 1 {
+                out.push(elem);
+            }
             out
         }
     };
