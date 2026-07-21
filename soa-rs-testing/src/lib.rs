@@ -1010,11 +1010,26 @@ fn dedup_drop_correctness() {
 #[test]
 fn dedup_by_key_basic() {
     let mut soa: Soa<_> = soa![
-        ExtraImplTester { things: 1, stuff: 10 },
-        ExtraImplTester { things: 1, stuff: 20 },
-        ExtraImplTester { things: 2, stuff: 30 },
-        ExtraImplTester { things: 2, stuff: 40 },
-        ExtraImplTester { things: 3, stuff: 50 },
+        ExtraImplTester {
+            things: 1,
+            stuff: 10
+        },
+        ExtraImplTester {
+            things: 1,
+            stuff: 20
+        },
+        ExtraImplTester {
+            things: 2,
+            stuff: 30
+        },
+        ExtraImplTester {
+            things: 2,
+            stuff: 40
+        },
+        ExtraImplTester {
+            things: 3,
+            stuff: 50
+        },
     ];
     soa.dedup_by_key(|r| *r.things);
     assert_eq!(soa.len(), 3);
