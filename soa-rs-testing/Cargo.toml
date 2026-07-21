@@ -5,7 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
-criterion = "0.5.1"
+criterion = "0.8.2"
 rand = "0.10.2"
 serde = "1.0.199"
 serde_json = "1.0.116"

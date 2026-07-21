@@ -1,5 +1,5 @@
 use criterion::{Criterion, criterion_group, criterion_main};
-use rand::{RngCore, SeedableRng, rngs::StdRng};
+use rand::{SeedableRng, rngs::StdRng};
 use soa_rs::{Soa, Soars, soa};
 
 struct Rng(StdRng);
@@ -10,7 +10,8 @@ impl Rng {
     }
 
     fn next_f32(&mut self) -> f32 {
-        f32::from_ne_bytes(self.0.next_u32().to_ne_bytes())
+        use rand::RngExt;
+        f32::from_ne_bytes(self.0.random::<u32>().to_ne_bytes())
     }
 
     fn collect_vec4<T>(&mut self, count: usize) -> T
