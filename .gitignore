@@ -7,3 +7,4 @@ perf.data.old
 profile.perf
 .cargo
 .claude
+.docs
