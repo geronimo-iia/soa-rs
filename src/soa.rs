@@ -366,7 +366,7 @@ where
     /// # #[soa_derive(Debug, PartialEq)]
     /// # struct Foo(usize);
     /// let mut soa = soa![Foo(1)];
-    /// soa.reserve(10);
+    /// soa.reserve_exact(10);
     /// assert!(soa.capacity() == 11);
     /// ```
     pub fn reserve_exact(&mut self, additional: usize) {
@@ -912,6 +912,68 @@ where
         T: Clone,
     {
         self.resize_with(new_len, || value.clone());
+    }
+
+    /// Returns a `Vec<usize>` of indices `0..self.len()` sorted by `compare`.
+    ///
+    /// Data in the `Soa` is never moved. Iterate over the result with
+    /// `soa.idx(i)` to visit elements in sorted order.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use soa_rs::{soa, Soars};
+    /// # #[derive(Soars, Debug, PartialEq, Copy, Clone)]
+    /// # #[soa_derive(Debug, PartialEq)]
+    /// # struct Foo(u8);
+    /// let soa = soa![Foo(3), Foo(1), Foo(2)];
+    /// let order = soa.sort_indices_by(|a, b| a.0.cmp(b.0));
+    /// let sorted: Vec<u8> = order.iter().map(|&i| *soa.idx(i).0).collect();
+    /// assert_eq!(sorted, [1, 2, 3]);
+    /// ```
+    pub fn sort_indices_by<F>(&self, mut compare: F) -> crate::Vec<usize>
+    where
+        F: FnMut(T::Ref<'_>, T::Ref<'_>) -> core::cmp::Ordering,
+    {
+        let mut indices: crate::Vec<usize> = (0..self.len).collect();
+        indices.sort_by(|&a, &b| {
+            // SAFETY: a and b are in 0..self.len
+            let ra = unsafe { self.raw().offset(a).get_ref() };
+            let rb = unsafe { self.raw().offset(b).get_ref() };
+            compare(ra, rb)
+        });
+        indices
+    }
+
+    /// Returns a `Vec<usize>` of indices `0..self.len()` sorted by `key`.
+    ///
+    /// Data in the `Soa` is never moved. Iterate over the result with
+    /// `soa.idx(i)` to visit elements in sorted order.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use soa_rs::{soa, Soars};
+    /// # #[derive(Soars, Debug, PartialEq, Copy, Clone)]
+    /// # #[soa_derive(Debug, PartialEq)]
+    /// # struct Foo(u8);
+    /// let soa = soa![Foo(3), Foo(1), Foo(2)];
+    /// let order = soa.sort_indices_by_key(|r| *r.0);
+    /// let sorted: Vec<u8> = order.iter().map(|&i| *soa.idx(i).0).collect();
+    /// assert_eq!(sorted, [1, 2, 3]);
+    /// ```
+    pub fn sort_indices_by_key<K, F>(&self, mut key: F) -> crate::Vec<usize>
+    where
+        K: Ord,
+        F: FnMut(T::Ref<'_>) -> K,
+    {
+        let mut indices: crate::Vec<usize> = (0..self.len).collect();
+        indices.sort_by_key(|&i| {
+            // SAFETY: i is in 0..self.len
+            let r = unsafe { self.raw().offset(i).get_ref() };
+            key(r)
+        });
+        indices
     }
 
     /// Grows the allocated capacity if `len == cap`.

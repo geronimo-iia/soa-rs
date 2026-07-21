@@ -1186,3 +1186,40 @@ fn resize_drop_correctness() {
     soa.resize(2, A);
     assert_eq!(soa.len(), 2);
 }
+
+#[test]
+fn sort_indices_by_basic() {
+    let soa = soa![Foo(3), Foo(1), Foo(4), Foo(1), Foo(5)];
+    let order = soa.sort_indices_by(|a, b| a.0.cmp(b.0));
+    let sorted: Vec<u8> = order.iter().map(|&i| *soa.idx(i).0).collect();
+    assert_eq!(sorted, [1, 1, 3, 4, 5]);
+}
+
+#[test]
+fn sort_indices_by_key_basic() {
+    let soa = soa![Foo(3), Foo(1), Foo(4), Foo(1), Foo(5)];
+    let order = soa.sort_indices_by_key(|r| *r.0);
+    let sorted: Vec<u8> = order.iter().map(|&i| *soa.idx(i).0).collect();
+    assert_eq!(sorted, [1, 1, 3, 4, 5]);
+}
+
+#[test]
+fn sort_indices_stable() {
+    let soa = soa![Foo(1), Foo(1), Foo(1)];
+    let order = soa.sort_indices_by_key(|r| *r.0);
+    assert_eq!(order, [0, 1, 2]);
+}
+
+#[test]
+fn sort_indices_empty() {
+    let soa: Soa<Foo> = Soa::new();
+    let order = soa.sort_indices_by(|a, b| a.0.cmp(b.0));
+    assert!(order.is_empty());
+}
+
+#[test]
+fn sort_indices_single() {
+    let soa = soa![Foo(42)];
+    let order = soa.sort_indices_by_key(|r| *r.0);
+    assert_eq!(order, [0]);
+}
