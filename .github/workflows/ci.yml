@@ -38,6 +38,9 @@ jobs:
       - name: Build
         run: cargo build --workspace
 
+      - name: Build (no_std)
+        run: cargo build --no-default-features
+
       - name: Test
         run: cargo test --workspace
 

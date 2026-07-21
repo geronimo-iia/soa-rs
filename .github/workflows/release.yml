@@ -27,13 +27,23 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace -- -D warnings
 
+      - name: Build (no_std)
+        run: cargo build --no-default-features
+
       - name: Test
         run: cargo test --workspace
 
       - name: Test (serde feature)
         run: cargo test --workspace --features serde
 
-  publish:
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      - name: Security audit
+        run: cargo audit
+
+  publish-derive:
     needs: test
     runs-on: ubuntu-latest
     steps:
@@ -48,8 +58,18 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_TOKEN }}
 
-      - name: Wait for soa-rs-derive to be available
-        run: sleep 20
+  publish-soa-rs:
+    needs: publish-derive
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.95"
+
+      - name: Wait for soa-rs-derive to be available on crates.io
+        run: sleep 30
 
       - name: Publish soa-rs
         run: cargo publish -p soa-rs

@@ -3,8 +3,6 @@
 A Rust library providing a `Vec`-like **Structure-of-Arrays (SoA)** container.
 What `Vec<T>` is to array-of-structures, `Soa<T>` is to structure-of-arrays.
 
----
-
 ## Project Layout
 
 ```
@@ -18,8 +16,6 @@ soa-rs/
 The three-crate split exists because proc macro crates cannot be their own
 dev-dependency. `soa-rs-testing` depends on both `soa-rs` and `soa-rs-derive`
 and is the only place where end-to-end tests live.
-
----
 
 ## Build & Test
 
@@ -39,8 +35,6 @@ cargo build --no-default-features
 
 The crate is `#![no_std]` and re-exports `alloc` as `soa_rs::__alloc` for
 internal use. Do not introduce `std`-only dependencies in `src/`.
-
----
 
 ## Core Abstractions
 
@@ -82,8 +76,6 @@ into the new block.
 This is the key design difference from `soa_derive` (one `Vec` per field) and
 `soa-vec` (nightly-only, macro-generated fixed-arity types).
 
----
-
 ## Derive Macro (`#[derive(Soars)]`)
 
 Deriving `Soars` for `struct Foo { ... }` generates:
@@ -113,13 +105,13 @@ struct Foo {
 }
 ```
 
-Tuple struct fields are accessed as `.f0()`, `.f1()`, etc.
-
----
+Tuple struct field slices are accessed on `Soa`/`Slice` as `.f0()`, `.f1()`,
+etc. On `FooRef` / `FooRefMut` in closures, use `.0`, `.1` directly.
 
 ## Key Implementation Files
 
-- `src/soa.rs` — `Soa<T>`: push/pop/insert/remove/reserve/shrink/grow logic
+- `src/soa.rs` — `Soa<T>`: push/pop/insert/remove/reserve/shrink/grow/retain/dedup/drain/split_off/resize/sort_indices
+- `src/drain.rs` — `Drain<'a, T>` iterator returned by `Soa::drain`
 - `src/slice.rs` — `Slice<T>`: iter, get, idx, split_at, swap, chunks_exact, slices
 - `src/soa_raw.rs` — `SoaRaw` unsafe trait definition
 - `src/soars.rs` — `Soars` safe trait definition
@@ -130,8 +122,6 @@ Tuple struct fields are accessed as `.f0()`, `.f1()`, etc.
 - `src/serde.rs` — optional serde `Serialize`/`Deserialize` (feature = `"serde"`)
 - `soa-rs-derive/src/soars/fields.rs` — main codegen entry point
 - `soa-rs-testing/src/lib.rs` — all integration tests
-
----
 
 ## Invariants & Safety Rules
 
@@ -145,7 +135,103 @@ Tuple struct fields are accessed as `.f0()`, `.f1()`, etc.
 6. `Soars::Deref` must be `#[repr(transparent)]` over `Slice<Self::Raw>`.
 7. `SoaRaw::offset` is pointer arithmetic only — it does not bounds-check.
 
----
+## Common Unsafe Patterns
+
+### Reading an element at index `i` via `SoaRaw`
+
+`SoaRaw::get_ref` takes no argument — it reads from the pointer's current
+position. Always advance with `offset` first:
+
+```rust
+// SAFETY: i < self.len
+let elem_ref: T::Ref<'_> = unsafe { self.raw().offset(i).get_ref() };
+let elem_mut: T::RefMut<'_> = unsafe { self.raw().offset(i).get_mut() };
+let elem_owned: T = unsafe { self.raw().offset(i).get() };
+```
+
+To copy element `src` to position `dst`:
+
+```rust
+// SAFETY: src and dst in bounds, dst != src or copy_to handles overlap
+unsafe { self.raw().offset(src).copy_to(self.raw().offset(dst), 1) };
+```
+
+### Accessing fields on `T::Ref<'_>` in closures
+
+The generated `FooRef` type exposes fields as **references**, not methods:
+
+| Struct definition | Access in closure | Type |
+|---|---|---|
+| `struct Foo { bar: u8 }` | `r.bar` | `&u8` |
+| `struct Foo(u8)` | `r.0` | `&u8` |
+
+```rust
+// named struct
+soa.retain(|r| *r.bar > 0);
+
+// tuple struct
+soa.retain(|r| *r.0 > 0);
+soa.sort_indices_by(|a, b| a.0.cmp(b.0));
+```
+
+`.f0()` / `.f1()` are **slice getters** on `Soa`/`Slice` (e.g. `soa.f0()`),
+not methods on `FooRef`.
+
+### Lifetime unification for cross-lifetime comparison
+
+When two `T::Ref<'_>` with different lifetimes must be compared (e.g. in
+`dedup`), transmute the shorter-lived one to unify:
+
+```rust
+// Sound: both refs are live for the duration of the comparison
+let b: T::Ref<'_> = unsafe { core::mem::transmute(b) };
+```
+
+## Common Mistakes — Don't Do This
+
+| mistake | correct |
+|---|---|
+| `raw.get_ref()` at wrong position | always `raw.offset(i).get_ref()` |
+| `r.f0()` on `FooRef` in closure | `r.0` (tuple) or `r.field` (named) |
+| `soa.f0()` returning a single value | it returns `&[u8]` — it's a slice getter |
+| adding `use std::...` anywhere in `src/` | crate is `#![no_std]`; use `core::` or `alloc::` |
+| dropping elements inside `SoaRaw` | `SoaRaw` never owns; drop responsibility is on `Soa`/`IntoIter` |
+| bounds-checking inside `SoaRaw::offset` | it is pointer arithmetic only — callers must check |
+| implementing new `Soa` methods in `slice.rs` | ownership/capacity logic → `soa.rs`; view/query logic → `slice.rs` |
+| publishing without `version` alongside `path` in Cargo.toml | `path` deps need `version` for crates.io publish |
+
+## Test Conventions
+
+**Test structs** (defined in `soa-rs-testing/src/lib.rs`):
+
+| struct | use for |
+|---|---|
+| `Foo(u8)` | general-purpose; `PartialEq`, `Clone`, `Copy`, `Default` |
+| `El` (with variants `A`–`E`) | drop-counting tests; tracks how many drops occurred |
+| `ExtraImplTester { things: u8 }` | ordering, hashing, `PartialOrd`, `Ord` |
+
+**Naming**: `<method>_<scenario>` — e.g. `drain_partial_consume_then_drop`,
+`resize_drop_correctness`, `sort_indices_stable`.
+
+**Drop tests**: use `El` + a `Drop` counter (static `AtomicUsize`) to assert
+no double-drops and no leaks. See existing `*_drop_correctness` tests for the
+pattern.
+
+**Doc-tests**: every public method on `Soa` needs at least one doctest in
+`src/soa.rs`. Use a hidden `# struct Foo(u8);` preamble to keep them concise.
+
+## Adding a New `Soa` Method
+
+1. Add the method to `impl<T: Soars> Soa<T>` in `src/soa.rs`.
+2. If it returns an iterator, create `src/<name>.rs`, `pub use` it from
+   `src/lib.rs`, and follow the `IterRaw` / `iter_with_raw!` pattern.
+3. Add a doctest in the method's doc comment.
+4. Add integration tests in `soa-rs-testing/src/lib.rs`:
+   - basic happy-path test
+   - empty / single-element edge cases
+   - drop-correctness test if the method moves or drops elements
+5. Update `CHANGELOG.md` under `[Unreleased] ### Added`.
+6. Update the method list in `AGENT.md` → Key Implementation Files.
 
 ## Adding a New `Slice` Method
 
@@ -157,84 +243,16 @@ Tuple struct fields are accessed as `.f0()`, `.f1()`, etc.
      `DoubleEndedIterator`, `ExactSizeIterator`, and `FusedIterator` for free.
 3. Add doc-tests and integration tests in `soa-rs-testing/src/lib.rs`.
 
----
+## Out of Scope
 
-## Potential Improvements
+Do **not** add these without explicit discussion:
 
-### Missing `Vec`-like APIs
+- `std`-only dependencies anywhere in `src/` — crate must stay `#![no_std]`
+- Per-field `Vec` storage — the design is a **single contiguous allocation**;
+  splitting into one `Vec` per field would break the memory model entirely
+- Nightly-only features — MSRV is `1.95` (stable)
+- In-place sort (`sort_by`, `sort_unstable`) — non-trivial; requires
+  cycle-following permutation applied to all field arrays
+- Proc macro changes for new field attributes — high blast radius; touch
+  `soa-rs-derive/` only when necessary and test with all existing derive tests
 
-- **`retain(|ref| bool)`** — filter elements in-place. Requires shifting
-  elements per-field; the tricky part is that each field array must be
-  compacted independently using the same index mask.
-- **`drain(range)`** — remove a sub-range and return an iterator over the
-  removed elements. Needs a `Drain` struct that holds the gap indices and
-  closes them on drop.
-- **`dedup()` / `dedup_by()`** — remove consecutive duplicates. Straightforward
-  once `retain` exists.
-- **`split_off(at)`** — split into two `Soa`s at an index. Allocates a new
-  `Soa` and moves the tail into it.
-- **`resize(new_len, value)`** — extend or truncate to a given length.
-
-### Sorting
-
-`sort`, `sort_by`, `sort_by_key`, and `sort_unstable` are absent. Sorting SoA
-is non-trivial because a comparison touches one field but a swap must move all
-fields. The cleanest approach is to sort an index array `[0..len]` by the
-desired key, then apply the resulting permutation to each field array in-place
-using a cycle-following algorithm (O(n) swaps, O(n) extra memory for the
-visited bitset, or O(n log n) with an auxiliary index copy).
-
-### Performance: `truncate`
-
-The current implementation calls `pop()` in a loop:
-
-```rust
-pub fn truncate(&mut self, len: usize) {
-    while len < self.len {
-        self.pop();
-    }
-}
-```
-
-For types that implement `Drop`, this is correct but slow for large truncations
-because each `pop` does a full element read-and-drop. A faster path would
-drop elements in-place via `ptr::drop_in_place` on each field slice tail,
-then set `self.len = len` directly — matching how `Vec::truncate` works.
-
-### Performance: `append`
-
-`append` currently iterates element-by-element with `push`. Since both `Soa`s
-share the same memory layout, a bulk `ptr::copy_nonoverlapping` per field
-array would be significantly faster, especially for large collections.
-
-### Performance: `serde` deserialization
-
-The `Deserialize` impl calls `push` for each element without a size hint from
-the deserializer. Passing `seq.size_hint()` to `Soa::with_capacity` would
-avoid repeated reallocations for formats that provide a length upfront (JSON
-arrays, bincode, etc.).
-
-### `ChunksExact`: missing `DoubleEndedIterator`
-
-`ChunksExact` only implements `Iterator`. Adding `DoubleEndedIterator` (iterate
-chunks from the end) and `ExactSizeIterator` would bring it in line with
-`std::slice::ChunksExact`.
-
-### `soa!` macro: repeat syntax efficiency
-
-The `soa![elem; N]` expansion clones `elem` in a `while` loop. For `N` known
-at compile time this is fine, but it could use `Soa::with_capacity(N)` before
-the loop to avoid any reallocation (currently `reserve(N)` is called after the
-first push, which may still trigger one extra grow for the initial
-`SMALL_CAPACITY` allocation).
-
-### Doc bug: `reserve_exact` example
-
-The doc-test for `reserve_exact` calls `soa.reserve(10)` instead of
-`soa.reserve_exact(10)`, making the assertion `capacity() == 11` misleading.
-
-### `no_std` + `alloc` feature gate
-
-Currently `alloc` is always required. A truly allocation-free mode (fixed-size
-`SoaArray` only) could be gated behind a `no_alloc` feature for bare-metal
-targets that have no heap.

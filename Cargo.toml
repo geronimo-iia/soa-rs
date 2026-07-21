@@ -1,14 +1,18 @@
 [package]
 name = "soa-rs"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2024"
 rust-version = "1.95"
 license = "MIT"
-description = "A Vec-like structure-of-arrays container"
+description = "Vec-like structure-of-arrays container. Derive SoA layout for any struct for cache-friendly, SIMD-ready data access."
 homepage = "https://github.com/geronimo-iia/soa-rs"
 repository = "https://github.com/geronimo-iia/soa-rs"
 readme = "README.md"
 categories = ["data-structures", "no-std"]
+keywords = ["soa", "data-structures", "simd", "vec", "no-std"]
+
+[package.metadata.docs.rs]
+features = ["serde"]
 
 [profile.bench]
 # For profiling
@@ -18,7 +22,7 @@ debug = true
 members = ["soa-rs-derive", "soa-rs-testing"]
 
 [dependencies.soa-rs-derive]
-version = "1.0.0"
+version = "1.1.0"
 path = "soa-rs-derive"
 
 [dependencies.serde]

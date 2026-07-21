@@ -51,6 +51,22 @@ for mut el in &mut soa {
 assert_eq!(soa, soa![Baz { foo: 15, bar: 6 }, Baz { foo: 11, bar: 2}]);
 ```
 
+## API
+
+`Soa<T>` mirrors the `Vec<T>` API:
+
+| Method | Description |
+|---|---|
+| `push` / `pop` / `insert` / `remove` | element-level mutation |
+| `retain` / `retain_mut` | in-place filter with a predicate |
+| `dedup` / `dedup_by` / `dedup_by_key` | remove consecutive duplicates |
+| `drain` | yield owned elements from a range, closing the gap on drop |
+| `split_off` | split at an index, returning the tail as a new `Soa` |
+| `resize` / `resize_with` | grow or shrink to a target length |
+| `sort_indices_by` / `sort_indices_by_key` | sorted index vector without moving data |
+| `append` / `truncate` / `clear` | bulk operations |
+| `reserve` / `reserve_exact` / `shrink_to_fit` | capacity management |
+
 ## What is SoA?
 
 Whereas AoS stores all the fields of a type in each element of the array,
@@ -143,3 +159,10 @@ more type system flexibility, less code generation, and better documentation.
 Whereas `soa-vec` only compiles on nightly, soa-rs also compiles on stable.
 Rather than using derive macros, `soa-vec` instead uses macros to generate
 eight static copies of their SoA type with fixed tuple sizes.
+
+## Fork
+
+This crate is a fork of [soa-rs by Timothy Harding](https://github.com/tim-harding/soa-rs).
+Added since the fork: `retain`, `retain_mut`, `dedup`, `dedup_by`, `dedup_by_key`,
+`drain`, `split_off`, `resize`, `resize_with`, `sort_indices_by`, `sort_indices_by_key`,
+`ChunksExact` improvements, serde pre-allocation, `truncate`/`append` perf, CI/CD pipeline.
